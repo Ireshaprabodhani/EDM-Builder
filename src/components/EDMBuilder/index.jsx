@@ -551,6 +551,7 @@ const EDMBuilder = () => {
     const [previewMode, setPreviewMode] = useState('preview');
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
     const [isSending, setIsSending] = useState(false);
+    const [error, setError] = useState(null);
 
     const handleSendTestEmail = async (emailData) => {
       setIsSending(true);
@@ -603,83 +604,161 @@ const EDMBuilder = () => {
     const parseHTMLToStructure = (htmlString) => {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlString, 'text/html');
-      const tables = Array.from(doc.getElementsByTagName('table'));
       
-      const newStructure = {
-        tables: tables.map(table => {
-          const tableId = generateId();
-          const rows = Array.from(table.getElementsByTagName('tr'));
-          
-          return {
-            id: tableId,
-            styles: extractStyles(table.getAttribute('style')),
-            rows: rows.map(row => {
-              const rowId = generateId();
-              const cells = Array.from(row.getElementsByTagName('td'));
-              
-              return {
-                id: rowId,
-                styles: extractStyles(row.getAttribute('style')),
-                columns: cells.map(cell => {
-                  const columnId = generateId();
-                  const components = [];
-                  
-                  // Parse text components (p tags)
-                  Array.from(cell.getElementsByTagName('p')).forEach(p => {
-                    components.push({
-                      id: generateId(),
-                      type: 'text',
-                      content: p.innerHTML,
-                      styles: extractStyles(p.getAttribute('style'))
-                    });
-                  });
-                  
-                  // Parse image components
-                  Array.from(cell.getElementsByTagName('img')).forEach(img => {
-                    components.push({
-                      id: generateId(),
-                      type: 'image',
-                      content: img.getAttribute('src'),
-                      styles: extractStyles(img.getAttribute('style'))
-                    });
-                  });
-                  
-                  return {
-                    id: columnId,
-                    components,
-                    styles: extractStyles(cell.getAttribute('style'))
-                  };
-                })
-              };
-            })
-          };
-        })
+      // First try to find content within body
+      const body = doc.querySelector('body');
+      const tables = Array.from(body ? body.getElementsByTagName('table') : doc.getElementsByTagName('table'));
+      
+      if (tables.length === 0) {
+        // If no tables found, wrap content in a table structure
+        return createDefaultStructure(body || doc.documentElement);
+      }
+    
+      return {
+        tables: tables.map(table => parseTable(table))
       };
-      
-      return newStructure;
     };
-  
-    const extractStyles = (styleString) => {
-      if (!styleString) return {};
+
+    const parseTable = (table) => {
+      const tableId = generateId();
+      const rows = Array.from(table.getElementsByTagName('tr'));
       
-      const styles = {};
-      const styleProps = styleString.split(';').filter(Boolean);
+      return {
+        id: tableId,
+        styles: extractStyles(table),
+        rows: rows.map(row => parseRow(row))
+      };
+    };
+
+    const parseRow = (row) => {
+      const rowId = generateId();
+      const cells = Array.from(row.getElementsByTagName('td'));
       
-      styleProps.forEach(prop => {
-        const [key, value] = prop.split(':').map(s => s.trim());
-        if (key && value) {
-          // Convert kebab-case to camelCase
-          const camelKey = key.replace(/-([a-z])/g, g => g[1].toUpperCase());
-          styles[camelKey] = value;
+      return {
+        id: rowId,
+        styles: extractStyles(row),
+        columns: cells.map(cell => parseColumn(cell))
+      };
+    };
+    
+    const parseColumn = (cell) => {
+      const columnId = generateId();
+      const components = [];
+      
+      // Parse direct text content if no other elements
+      if (cell.childNodes.length === 1 && cell.childNodes[0].nodeType === 3) {
+        components.push(createTextComponent(cell.textContent));
+      }
+      
+      // Parse elements
+      Array.from(cell.children).forEach(element => {
+        if (element.tagName.toLowerCase() === 'img') {
+          components.push(createImageComponent(element));
+        } else if (['p', 'div', 'span'].includes(element.tagName.toLowerCase())) {
+          components.push(createTextComponent(element.innerHTML, element));
         }
       });
+      
+      return {
+        id: columnId,
+        components,
+        styles: extractStyles(cell)
+      };
+    };
+
+    const createDefaultStructure = (content) => {
+      const tableId = generateId();
+      const rowId = generateId();
+      const columnId = generateId();
+      
+      return {
+        tables: [{
+          id: tableId,
+          styles: {
+            width: '600px',
+            margin: '0 auto',
+            backgroundColor: '#ffffff'
+          },
+          rows: [{
+            id: rowId,
+            styles: {},
+            columns: [{
+              id: columnId,
+              components: [createTextComponent(content.innerHTML)],
+              styles: { padding: '20px' }
+            }]
+          }]
+        }]
+      };
+    };
+    
+    const createTextComponent = (content, element = null) => ({
+      id: generateId(),
+      type: 'text',
+      content: content,
+      styles: element ? extractStyles(element) : {
+        fontSize: '16px',
+        color: '#000000',
+        fontFamily: 'Arial, sans-serif'
+      }
+    });
+    
+    const createImageComponent = (element) => ({
+      id: generateId(),
+      type: 'image',
+      content: element.getAttribute('src'),
+      styles: {
+        ...extractStyles(element),
+        width: element.getAttribute('width') || '100%',
+        maxWidth: '100%',
+        height: 'auto'
+      }
+    });
+    
+  
+    const extractStyles = (element) => {
+      if (!element || !element.style) return {};
+      
+      const computedStyle = window.getComputedStyle(element);
+      const styles = {};
+      const relevantProps = [
+        'backgroundColor', 'color', 'fontSize', 'fontFamily',
+        'padding', 'margin', 'width', 'maxWidth', 'textAlign',
+        'borderWidth', 'borderStyle', 'borderColor', 'verticalAlign'
+      ];
+      
+      relevantProps.forEach(prop => {
+        const value = element.style[prop] || computedStyle[prop];
+        if (value && value !== 'initial' && value !== 'none') {
+          styles[prop] = value;
+        }
+      });
+    
+    
+      const inlineStyles = element.getAttribute('style');
+      if (inlineStyles) {
+        const inlineStylesObj = {};
+        inlineStyles.split(';').forEach(style => {
+          const [key, value] = style.split(':').map(s => s.trim());
+          if (key && value) {
+            const camelKey = key.replace(/-([a-z])/g, g => g[1].toUpperCase());
+            inlineStylesObj[camelKey] = value;
+          }
+        });
+        Object.assign(styles, inlineStylesObj);
+      }
       
       return styles;
     };
   
     const handleCodeChange = (newCode) => {
-      setEditedCode(newCode);
-      setIsEdited(true);
+      if (validateHTML(newCode)) {
+        setEditedCode(newCode);
+        setIsEdited(true);
+        setError(null);
+      } else {
+        setError('Invalid HTML structure');
+      }
     };
   
     const handleSave = () => {
@@ -697,6 +776,16 @@ const EDMBuilder = () => {
     const handleRevert = () => {
       setEditedCode(code);
       setIsEdited(false);
+    };
+
+    const validateHTML = (code) => {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(code, 'text/html');
+        return !doc.querySelector('parsererror');
+      } catch (error) {
+        return false;
+      }
     };
   
     return (
