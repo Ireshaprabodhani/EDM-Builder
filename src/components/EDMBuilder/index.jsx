@@ -1,9 +1,10 @@
-import React, { useState , useEffect} from 'react';
-import { Plus, Type, Image, X, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Type, Image, X, Settings, ArrowUp, ArrowDown, Mail } from 'lucide-react';
 import { generateId } from './utils/generateId';
 import { generateHTML } from './utils/htmlGenerator';
 import * as Components from './components/ContentComponents';
 import StylePanel from './components/StylePanel/index';
+import TestEmailModal from '../testEmail/TestEmailModal';
 
 
 const EDMBuilder = () => {
@@ -13,6 +14,7 @@ const EDMBuilder = () => {
   const [previewMode, setPreviewMode] = useState('preview');
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  
 
   const [columnWidthModal, setColumnWidthModal] = useState({
     show: false,
@@ -67,35 +69,6 @@ const EDMBuilder = () => {
     );
   };
 
-  // const handleSendTestEmail = async (emailData) => {
-  //   setIsSending(true);
-  //   try {
-  //     const response = await fetch('/api/send-test-email', {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify({
-  //         ...emailData,
-  //         html: code // Your email HTML
-  //       })
-  //     });
-  
-  //     if (!response.ok) {
-  //       throw new Error('Failed to send email');
-  //     }
-  
-  //     const result = await response.json();
-  //     alert('Test email sent successfully!');
-  //     setIsEmailModalOpen(false);
-  //   } catch (error) {
-  //     console.error('Error sending test email:', error);
-  //     alert('Failed to send test email. Please try again.');
-  //   } finally {
-  //     setIsSending(false);
-  //   }
-  // };
-  
 
 
   // Add table
@@ -576,6 +549,46 @@ const EDMBuilder = () => {
     const [editedCode, setEditedCode] = useState('');
     const [isEdited, setIsEdited] = useState(false);
     const [previewMode, setPreviewMode] = useState('preview');
+    const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [isSending, setIsSending] = useState(false);
+
+    const handleSendTestEmail = async (emailData) => {
+      setIsSending(true);
+      try {
+        console.log('Sending email:', emailData);
+        
+        const response = await fetch('http://localhost:3001/api/send-test-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            to: emailData.to,
+            subject: emailData.subject,
+            fromName: 'edm-test-mails',
+            fromEmail: process.env.REACT_APP_SENDER_EMAIL,
+            html: code || editedCode
+          }),
+          credentials: 'include'
+        });
+    
+        const data = await response.json();
+        console.log('Response:', data);
+    
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to send email');
+        }
+    
+        alert('Test email sent successfully!');
+        setIsEmailModalOpen(false);
+      } catch (error) {
+        console.error('Error sending test email:', error);
+        alert(`Failed to send test email: ${error.message}`);
+      } finally {
+        setIsSending(false);
+      }
+    };
+    
   
     useEffect(() => {
       if (structure) {
@@ -710,6 +723,20 @@ const EDMBuilder = () => {
             >
               Code
             </button>
+
+            <button
+                  onClick={() => setIsEmailModalOpen(true)}
+                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                >
+                  Send Test Email
+            </button>
+
+            <TestEmailModal
+                  isOpen={isEmailModalOpen}
+                  onClose={() => setIsEmailModalOpen(false)}
+                  onSend={handleSendTestEmail}
+                  isSending={isSending}
+            />
           </div>
   
           {previewMode === 'code' && isEdited && (
@@ -1129,16 +1156,11 @@ const EDMBuilder = () => {
             
           </>
         ) : (
-          <div className="bg-white rounded-lg p-4">
-            <div className="bg-white rounded-lg p-4">
+            
                 <PreviewSection 
                   structure={structure} 
                   setStructure={setStructure}
-                />
-            </div>
-          </div>
-
-            
+                /> 
         )}
       </div>
     </div>
