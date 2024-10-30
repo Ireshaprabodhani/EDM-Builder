@@ -118,7 +118,7 @@ const EDMBuilder = () => {
   
   const addFullWidthComponent = (tableId, type) => {
     const row = {
-      // id: generateId(),
+      id: generateId(),
       isFullWidth: true,
       columns: [{
         id: generateId(),
