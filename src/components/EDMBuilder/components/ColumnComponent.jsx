@@ -37,7 +37,7 @@ const ColumnComponent = ({
       </div>
 
       {showStyleEditor && (
-        < 
+        <StyleEditor 
           styles={styles}
           onUpdate={(newStyles) => onUpdateStyles(tableId, rowId, column.id, null, newStyles)}
         />
